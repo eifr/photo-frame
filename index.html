@@ -1,0 +1,1818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#1a1a2e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Photo Frame</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: #000; color: #fff;
+    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    user-select: none; -webkit-user-select: none;
+  }
+
+  /* ===== Slideshow ===== */
+  #slideshow { position: fixed; inset: 0; z-index: 1; background: #000; }
+  .slide {
+    position: absolute; inset: 0;
+    opacity: 0; transition: opacity 1.5s ease;
+    z-index: 1;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .slide.active { opacity: 1; z-index: 2; }
+  .slide img.bg {
+    position: absolute; inset: -20px;
+    width: calc(100% + 40px); height: calc(100% + 40px);
+    object-fit: cover;
+    filter: blur(30px) brightness(0.35);
+  }
+  .slide img.fg {
+    display: block;
+    width: 100%; height: 100%;
+    object-fit: contain;
+    position: relative; z-index: 1;
+  }
+  .slide video.bg-video {
+    position: absolute; inset: -20px;
+    width: calc(100% + 40px); height: calc(100% + 40px);
+    object-fit: cover;
+    filter: blur(30px) brightness(0.35);
+  }
+  .slide video.fg-video {
+    display: block;
+    width: 100%; height: 100%;
+    object-fit: contain;
+    position: relative; z-index: 1;
+  }
+  .slide .message-group {
+    position: absolute; bottom: 48px; inset-inline-start: 32px; z-index: 3;
+    display: flex; align-items: flex-end; gap: 14px;
+    max-width: min(80%, 640px);
+  }
+  .slide .sender-avatar {
+    width: 52px; height: 52px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; font-weight: 600; color: #fff;
+    border: 2.5px solid rgba(255,255,255,0.35);
+    flex-shrink: 0; overflow: hidden;
+    box-shadow: 0 2px 16px rgba(0,0,0,0.25);
+    position: relative;
+  }
+  .slide .sender-avatar img {
+    width: 100%; height: 100%; object-fit: cover;
+    display: block;
+  }
+  .slide .sender-avatar .initial {
+    position: absolute; line-height: 1;
+  }
+  .slide .message-content {
+    display: flex; flex-direction: column; gap: 3px;
+    min-width: 0; flex: 1;
+    background: rgba(0,0,0,0.5);
+    backdrop-filter: blur(20px) saturate(1.3);
+    -webkit-backdrop-filter: blur(20px) saturate(1.3);
+    padding: 14px 22px;
+    border-radius: 20px;
+    border: 0.5px solid rgba(255,255,255,0.12);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+  }
+  .slide .sender-name {
+    font-size: 0.85rem; font-weight: 700;
+    opacity: 0.85;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .slide .caption-overlay {
+    width: 100%;
+    min-width: 0;
+  }
+  .slide .caption-overlay p {
+    font-size: 1.25rem; line-height: 1.45;
+    color: #fff;
+    margin: 0;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    hyphens: auto;
+    font-weight: 400;
+  }
+  .slide .caption-overlay p:empty {
+    display: none;
+  }
+  .slide .photo-count {
+    position: absolute; bottom: 16px; inset-inline-end: 24px;
+    font-size: 0.8rem; opacity: 0.5;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+    z-index: 2;
+  }
+
+  /* ===== Gradient overlay (ensures text readability) ===== */
+  #overlay-gradient {
+    position: fixed; inset: 0; z-index: 5;
+    pointer-events: none;
+    background: linear-gradient(
+      to bottom,
+      rgba(0,0,0,0.45) 0%, transparent 20%,
+      transparent 80%, rgba(0,0,0,0.45) 100%
+    );
+  }
+
+  /* ===== Text Overlays ===== */
+  #overlay-top {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 10;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    padding: 32px 40px;
+    pointer-events: none;
+  }
+  #overlay-top > div { pointer-events: auto; }
+
+  #clock {
+    font-size: clamp(3rem, 6vw, 5.5rem);
+    font-weight: 200; line-height: 1;
+    text-shadow: 0 2px 16px rgba(0,0,0,0.6);
+    letter-spacing: 0.02em;
+  }
+  #date {
+    font-size: clamp(1rem, 1.5vw, 1.3rem);
+    font-weight: 300; opacity: 0.8;
+    text-shadow: 0 2px 12px rgba(0,0,0,0.6);
+    margin-top: 6px;
+  }
+  #weather {
+    font-size: clamp(1rem, 1.5vw, 1.3rem);
+    font-weight: 300; opacity: 0.8;
+    text-shadow: 0 2px 12px rgba(0,0,0,0.6);
+    margin-top: 4px;
+  }
+
+
+  /* ===== Sleep Overlay ===== */
+  #sleep-overlay {
+    position: fixed; inset: 0; z-index: 50;
+    background: rgba(0,0,0,0.92);
+    opacity: 0; pointer-events: none;
+    transition: opacity 2s ease;
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 12px;
+  }
+  #sleep-overlay.active { opacity: 1; pointer-events: auto; }
+  #sleep-overlay .sleep-clock {
+    font-size: clamp(3rem, 8vw, 6rem);
+    font-weight: 200; letter-spacing: 0.02em;
+    text-shadow: 0 2px 20px rgba(0,0,0,0.6);
+  }
+  #sleep-overlay .sleep-date {
+    font-size: clamp(1rem, 2vw, 1.5rem);
+    font-weight: 300; opacity: 0.5;
+  }
+  #sleep-overlay .sleep-hint {
+    position: absolute; bottom: 40px;
+    font-size: 0.8rem; opacity: 0.25;
+    letter-spacing: 0.05em;
+  }
+
+  /* ===== Message Overlay ===== */
+  #message-overlay {
+    position: fixed; bottom: 80px; right: 32px; z-index: 15;
+    max-width: 420px; text-align: right;
+    opacity: 0; transition: opacity 1s ease;
+    pointer-events: none;
+  }
+  #message-overlay.visible { opacity: 1; }
+  #message-overlay .msg-sender {
+    font-size: 0.85rem; opacity: 0.55;
+    text-shadow: 0 1px 10px rgba(0,0,0,0.8);
+  }
+  #message-overlay .msg-text {
+    font-size: clamp(1rem, 1.8vw, 1.35rem);
+    margin-top: 4px; line-height: 1.45;
+    text-shadow: 0 2px 12px rgba(0,0,0,0.8);
+  }
+  #message-overlay .msg-time {
+    font-size: 0.7rem; opacity: 0.35;
+    margin-top: 4px;
+    text-shadow: 0 1px 8px rgba(0,0,0,0.8);
+  }
+
+  /* ===== Setup Screen ===== */
+  #setup-screen {
+    position: fixed; inset: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: center;
+    background: #0a0a12;
+    transition: opacity 0.5s ease;
+  }
+  #setup-screen.hidden { opacity: 0; pointer-events: none; }
+  .setup-card {
+    background: rgba(26,26,46,0.95);
+    border: 1px solid rgba(240,165,0,0.2);
+    border-radius: 16px;
+    padding: 40px; max-width: 440px; width: 90%;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.8);
+  }
+  .setup-card h1 {
+    font-size: 1.8rem; font-weight: 300; margin-bottom: 4px;
+    color: #f0a500;
+  }
+  .setup-card p { font-size: 0.9rem; opacity: 0.6; margin-bottom: 24px; }
+  .setup-card label {
+    display: block; font-size: 0.75rem; text-transform: uppercase;
+    letter-spacing: 0.08em; opacity: 0.5; margin-bottom: 4px; margin-top: 16px;
+  }
+  .setup-card label:first-of-type { margin-top: 0; }
+  .setup-card input, .setup-card select {
+    width: 100%; padding: 10px 14px; border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(0,0,0,0.3); color: #fff;
+    font-size: 0.95rem; font-family: inherit;
+    outline: none; transition: border-color 0.2s;
+  }
+  .setup-card input:focus {
+    border-color: #f0a500;
+  }
+  .setup-card input::placeholder { color: rgba(255,255,255,0.2); }
+  .setup-card .time-row {
+    display: flex; gap: 12px; align-items: center;
+  }
+  .setup-card .time-row input { flex: 1; }
+  .setup-card .time-row span { opacity: 0.5; }
+  .setup-card button {
+    width: 100%; margin-top: 24px; padding: 12px;
+    border: none; border-radius: 8px;
+    background: #f0a500; color: #0a0a12;
+    font-size: 1rem; font-weight: 600; cursor: pointer;
+    transition: opacity 0.2s;
+  }
+  .setup-card button:hover { opacity: 0.9; }
+  .setup-card button:active { opacity: 0.7; }
+
+  /* ===== Status Bar ===== */
+  #status-bar {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 30;
+    display: flex; justify-content: center; gap: 16px;
+    padding: 8px 16px;
+    font-size: 0.7rem; opacity: 0.4;
+    pointer-events: none;
+  }
+  #status-bar .status-dot {
+    display: inline-block; width: 6px; height: 6px;
+    border-radius: 50%; margin-right: 4px;
+    vertical-align: middle;
+  }
+  #status-bar .status-dot.green { background: #4caf50; }
+  #status-bar .status-dot.yellow { background: #ff9800; }
+  #status-bar .status-dot.red { background: #f44336; }
+
+  /* ===== Admin Panel ===== */
+  #admin-overlay {
+    position: fixed; inset: 0; z-index: 90;
+    background: rgba(0,0,0,0.7);
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.3s ease;
+    display: flex; align-items: center; justify-content: center;
+    backdrop-filter: blur(8px);
+  }
+  #admin-overlay.active { opacity: 1; pointer-events: auto; }
+  #admin-panel {
+    background: rgba(26,26,46,0.97);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 16px;
+    max-width: 560px; width: 92%; max-height: 85vh;
+    padding: 32px; overflow-y: auto;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.8);
+  }
+  #admin-panel h2 {
+    font-size: 1.3rem; font-weight: 300; margin-bottom: 20px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  #admin-panel h2 .close-btn {
+    background: none; border: none; color: rgba(255,255,255,0.4);
+    font-size: 1.5rem; cursor: pointer; padding: 4px 8px;
+    border-radius: 4px; transition: color 0.2s;
+  }
+  #admin-panel h2 .close-btn:hover { color: #fff; }
+  .admin-section {
+    margin-bottom: 20px; padding-bottom: 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .admin-section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+  .admin-section h3 {
+    font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em;
+    opacity: 0.4; margin-bottom: 12px;
+  }
+  .admin-section label {
+    display: block; font-size: 0.75rem; opacity: 0.5;
+    margin-top: 12px; margin-bottom: 4px;
+  }
+  .admin-section label:first-child { margin-top: 0; }
+  .admin-section input, .admin-section select {
+    width: 100%; padding: 8px 12px; border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(0,0,0,0.3); color: #fff;
+    font-size: 0.9rem; font-family: inherit;
+    outline: none;
+  }
+  .admin-section input:focus { border-color: #f0a500; }
+  .admin-section .time-row { display: flex; gap: 12px; align-items: center; }
+  .admin-section .time-row input { flex: 1; }
+  .admin-section .time-row span { opacity: 0.5; }
+  .admin-section .btn-row { display: flex; gap: 8px; margin-top: 12px; }
+  .admin-section .btn-row button { flex: 1; }
+  .btn {
+    padding: 8px 16px; border: none; border-radius: 6px;
+    font-size: 0.85rem; font-weight: 500; cursor: pointer;
+    transition: opacity 0.2s;
+  }
+  .btn:hover { opacity: 0.85; }
+  .btn-primary { background: #f0a500; color: #0a0a12; }
+  .btn-danger { background: #e94560; color: #fff; }
+  .btn-secondary { background: rgba(255,255,255,0.1); color: #fff; }
+  .btn-sm { padding: 4px 10px; font-size: 0.75rem; }
+
+  .photo-list { display: flex; flex-direction: column; gap: 8px; max-height: 200px; overflow-y: auto; }
+  .photo-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 8px 12px; background: rgba(0,0,0,0.3); border-radius: 8px;
+  }
+  .photo-item img {
+    width: 48px; height: 48px; object-fit: cover; border-radius: 4px;
+  }
+  .photo-item .info { flex: 1; min-width: 0; }
+  .photo-item .info .name {
+    font-size: 0.8rem; white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .photo-item .info .meta { font-size: 0.7rem; opacity: 0.4; }
+  .photo-item .del-btn {
+    background: none; border: none; color: #e94560;
+    cursor: pointer; font-size: 1.1rem; padding: 4px; opacity: 0.5;
+    transition: opacity 0.2s;
+  }
+  .photo-item .del-btn:hover { opacity: 1; }
+
+  /* ===== Empty State ===== */
+  #empty-state {
+    position: fixed; inset: 0; z-index: 3;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    color: rgba(255,255,255,0.3);
+    text-align: center; padding: 32px;
+    transition: opacity 0.5s ease;
+  }
+  #empty-state.hidden { opacity: 0; pointer-events: none; }
+  #empty-state .icon { font-size: 4rem; margin-bottom: 16px; opacity: 0.3; }
+  #empty-state h2 { font-size: 1.2rem; font-weight: 300; margin-bottom: 8px; }
+  #empty-state p { font-size: 0.85rem; max-width: 320px; line-height: 1.5; }
+
+  /* ===== Toast ===== */
+  #toast {
+    position: fixed; bottom: 60px; left: 50%; transform: translateX(-50%);
+    z-index: 80; padding: 10px 24px; border-radius: 8px;
+    background: rgba(0,0,0,0.85); color: #fff;
+    font-size: 0.85rem; text-align: center;
+    opacity: 0; transition: opacity 0.3s ease;
+    pointer-events: none; max-width: 80%;
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+  #toast.visible { opacity: 1; }
+
+  /* ===== Scrollbar ===== */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+
+  /* ===== Responsive ===== */
+  @media (max-width: 640px) {
+    #overlay-top { padding: 20px 24px; flex-direction: column; gap: 4px; }
+    .setup-card { padding: 28px 24px; }
+    #admin-panel { padding: 24px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== Setup Screen ===== -->
+<div id="setup-screen">
+  <div class="setup-card">
+    <h1>Photo Frame</h1>
+    <p>Configure your Telegram bot to start the slideshow</p>
+    <form id="setup-form">
+      <label>Bot Token</label>
+      <input type="text" id="s-bot-token" placeholder="1234567890:ABCdefGHIjklMNOpqrsTUVwxyz" autocomplete="off">
+      <label>Group Chat ID</label>
+      <input type="text" id="s-whitelist" placeholder="-1001234567890">
+      <label>Weather Latitude, Longitude</label>
+      <input type="text" id="s-location" placeholder="51.5, -0.12">
+      <label>Sleep Schedule</label>
+      <div class="time-row">
+        <input type="time" id="s-sleep-start" value="23:00">
+        <span>to</span>
+        <input type="time" id="s-sleep-end" value="07:00">
+      </div>
+      <button type="submit">Start Photo Frame</button>
+    </form>
+  </div>
+</div>
+
+<!-- ===== Empty State ===== -->
+<div id="empty-state">
+  <div class="icon" style="font-size:3rem;line-height:1;margin-bottom:16px;opacity:0.3;">+</div>
+  <h2>No media yet</h2>
+  <p>Send a photo, video, or GIF to your Telegram bot and it will appear here.</p>
+</div>
+
+<!-- ===== Slideshow ===== -->
+<div id="slideshow">
+  <div class="slide" id="slide-0">
+    <img class="bg" alt="">
+    <img class="fg" alt="">
+    <video class="bg-video" muted playsinline loop preload="auto"></video>
+    <video class="fg-video" muted playsinline loop preload="auto"></video>
+    <div class="message-group">
+      <div class="sender-avatar" style="position:relative"><img alt=""><span class="initial"></span></div>
+      <div class="message-content">
+        <span class="sender-name"></span>
+        <div class="caption-overlay"><p></p></div>
+      </div>
+    </div>
+    <span class="photo-count"></span>
+  </div>
+  <div class="slide" id="slide-1">
+    <img class="bg" alt="">
+    <img class="fg" alt="">
+    <video class="bg-video" muted playsinline loop preload="auto"></video>
+    <video class="fg-video" muted playsinline loop preload="auto"></video>
+    <div class="message-group">
+      <div class="sender-avatar" style="position:relative"><img alt=""><span class="initial"></span></div>
+      <div class="message-content">
+        <span class="sender-name"></span>
+        <div class="caption-overlay"><p></p></div>
+      </div>
+    </div>
+    <span class="photo-count"></span>
+  </div>
+</div>
+
+<!-- ===== Gradient Overlay ===== -->
+<div id="overlay-gradient"></div>
+
+<!-- ===== Top Overlay ===== -->
+<div id="overlay-top">
+  <div></div>
+  <div style="text-align:right">
+    <div id="clock">--:--</div>
+    <div id="date"></div>
+    <div id="weather"></div>
+  </div>
+</div>
+
+<!-- ===== Sleep Overlay ===== -->
+<div id="sleep-overlay">
+  <div class="sleep-clock"></div>
+  <div class="sleep-date"></div>
+  <div class="sleep-hint">tap to wake</div>
+</div>
+
+<!-- ===== Message Overlay ===== -->
+<div id="message-overlay">
+  <div class="msg-sender"></div>
+  <div class="msg-text"></div>
+  <div class="msg-time"></div>
+</div>
+
+<!-- ===== Status Bar ===== -->
+<div id="status-bar">
+  <span><span class="status-dot yellow" id="dot-telegram"></span>Telegram</span>
+  <span><span class="status-dot yellow" id="dot-weather"></span>Weather</span>
+  <span id="photo-count-label">0 items</span>
+</div>
+
+<!-- ===== Toast ===== -->
+<div id="toast"></div>
+
+<!-- ===== Admin Overlay ===== -->
+<div id="admin-overlay">
+  <div id="admin-panel">
+    <h2>
+      <span>Settings</span>
+      <button class="close-btn" id="admin-close">&times;</button>
+    </h2>
+
+    <div class="admin-section">
+      <h3>Telegram</h3>
+      <label>Bot Token</label>
+      <input type="text" id="a-bot-token" autocomplete="off">
+      <label>Group Chat ID</label>
+      <input type="text" id="a-whitelist">
+    </div>
+
+    <div class="admin-section">
+      <h3>Weather</h3>
+      <label>Latitude, Longitude</label>
+      <input type="text" id="a-location">
+    </div>
+
+    <div class="admin-section">
+      <h3>Sleep Mode</h3>
+      <div class="time-row">
+        <input type="time" id="a-sleep-start">
+        <span>to</span>
+        <input type="time" id="a-sleep-end">
+      </div>
+      <label>Default Display Duration (seconds)</label>
+      <input type="number" id="a-display-duration" min="3" max="3600">
+    </div>
+
+    <div class="admin-section">
+      <h3>Stored Media (<span id="photo-count-admin">0</span>)</h3>
+      <div class="photo-list" id="photo-list"></div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" id="admin-save">Save Settings</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { openDB } from 'https://cdn.jsdelivr.net/npm/idb@8/+esm';
+
+/* ============================================================
+   Hardcoded Configuration
+   Set these values to skip the setup screen.
+   Leave empty strings to use the on-screen setup form instead.
+   ============================================================ */
+const CONFIG = {
+  botToken: '',         // e.g. '1234567890:ABCdefGHIjklMNOpqrsTUVwxyz'
+  chatId: 0,               // e.g. -1001234567890 — the group chat ID (any member can upload)
+};
+
+/* ============================================================
+   DB Layer
+   ============================================================ */
+let _db = null;
+async function db() {
+  if (_db) return _db;
+  _db = await openDB('photo-frame', 3, {
+    upgrade(db, oldVersion) {
+      if (!db.objectStoreNames.contains('photos')) {
+        db.createObjectStore('photos', { keyPath: 'id', autoIncrement: true });
+      }
+      if (!db.objectStoreNames.contains('config')) {
+        db.createObjectStore('config', { keyPath: 'key' });
+      }
+      if (oldVersion < 2 || !db.objectStoreNames.contains('pending')) {
+        if (db.objectStoreNames.contains('pending')) db.deleteObjectStore('pending');
+        db.createObjectStore('pending', { keyPath: 'userId' });
+      }
+      if (!db.objectStoreNames.contains('messages')) {
+        db.createObjectStore('messages', { keyPath: 'id', autoIncrement: true });
+      }
+      if (!db.objectStoreNames.contains('tracked')) {
+        db.createObjectStore('tracked', { keyPath: 'messageId' });
+      }
+    }
+  });
+  return _db;
+}
+
+const DEFAULTS = {
+  botToken: '',
+  chatId: 0,
+  lat: 31.77,
+  lon: 35.21,
+  sleepStart: '23:00',
+  sleepEnd: '07:00',
+  displayDuration: 10,
+  pollOffset: 0
+};
+
+/* ============================================================
+   Settings
+   ============================================================ */
+const settings = {
+  _data: { ...DEFAULTS },
+
+  async load() {
+    const d = await (await db()).get('config', 'main');
+    if (d) this._data = { ...DEFAULTS, ...d.value };
+    return this._data;
+  },
+
+  async save(partial) {
+    Object.assign(this._data, partial);
+    await (await db()).put('config', { key: 'main', value: { ...this._data } });
+  },
+
+  get(key) { return this._data[key]; },
+  getAll() { return { ...this._data }; },
+
+  get sleepActive() {
+    const { sleepStart, sleepEnd } = this._data;
+    const now = new Date();
+    const mm = now.getHours() * 60 + now.getMinutes();
+    const startParts = sleepStart.split(':').map(Number);
+    const endParts = sleepEnd.split(':').map(Number);
+    const startM = startParts[0] * 60 + startParts[1];
+    const endM = endParts[0] * 60 + endParts[1];
+    if (startM <= endM) return mm >= startM && mm < endM;
+    return mm >= startM || mm < endM;
+  }
+};
+
+/* ============================================================
+   Telegram API Client
+   ============================================================ */
+const tg = {
+  _token: '',
+
+  init(token) { this._token = token; },
+
+  async call(method, params = {}) {
+    const url = `https://api.telegram.org/bot${this._token}/${method}`;
+    const body = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) {
+      body.set(k, typeof v === 'object' ? JSON.stringify(v) : String(v));
+    }
+    const res = await fetch(url, { method: 'POST', body });
+    const json = await res.json();
+    if (!json.ok) throw new Error(`Telegram API error: ${json.description}`);
+    return json.result;
+  },
+
+  async getUpdates(offset, opts = {}) {
+    return this.call('getUpdates', { offset, timeout: opts.timeout ?? 30, allowed_updates: ['message', 'callback_query'] });
+  },
+
+  async sendMessage(chatId, text, opts = {}) {
+    return this.call('sendMessage', { chat_id: chatId, text, ...opts });
+  },
+
+  async answerCallbackQuery(id, text) {
+    return this.call('answerCallbackQuery', { callback_query_id: id, text: text || '' });
+  },
+
+  async getFile(fileId) {
+    return this.call('getFile', { file_id: fileId });
+  },
+
+  async downloadFile(filePath) {
+    const url = `https://api.telegram.org/file/bot${this._token}/${filePath}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Download failed: ${res.status}`);
+    return res.blob();
+  },
+
+  async deleteMessage(chatId, messageId) {
+    return this.call('deleteMessage', { chat_id: chatId, message_id: messageId });
+  },
+
+  async getUserProfilePhotos(userId, opts = {}) {
+    return this.call('getUserProfilePhotos', { user_id: userId, limit: opts.limit || 1, offset: opts.offset || 0 });
+  },
+
+  async setMyCommands() {
+    return this.call('setMyCommands', {
+      commands: JSON.stringify([
+        { command: 'remove', description: 'Remove a photo/video/GIF from the slideshow (reply to a message)' }
+      ])
+    });
+  }
+};
+
+/* ============================================================
+   Conversation Manager
+   ============================================================ */
+const conv = {
+  async handleUpdate(update) {
+    const allowedChat = settings.get('chatId');
+    if (!allowedChat) return;
+
+    if (update.callback_query) {
+      const cq = update.callback_query;
+      if (cq.message?.chat?.id !== Number(allowedChat)) return;
+      await this._handleCallback(cq);
+      return;
+    }
+
+    if (!update.message) return;
+    const msg = update.message;
+    const chatId = msg.chat?.id;
+    if (chatId !== Number(allowedChat)) return;
+
+    try { await (await db()).put('tracked', { messageId: msg.message_id, chatId }); } catch {}
+
+    if (msg.photo) {
+      await this._handlePhoto(chatId, msg);
+      return;
+    }
+    if (msg.video) {
+      await this._handleVideo(chatId, msg);
+      return;
+    }
+    if (msg.animation) {
+      await this._handleAnimation(chatId, msg);
+      return;
+    }
+
+    if (msg.text) {
+      const cmd = msg.text.split('@')[0];
+      if (cmd === '/remove' && (msg.reply_to_message?.photo || msg.reply_to_message?.video || msg.reply_to_message?.animation)) {
+        await this._handleRemove(chatId, msg);
+        return;
+      }
+      const sender = msg.from?.first_name || msg.from?.username || 'Unknown';
+      await (await db()).add('messages', {
+        messageId: msg.message_id,
+        chatId,
+        text: msg.text,
+        senderName: sender,
+        date: Date.now()
+      });
+      await messageViewer.refresh();
+    }
+  },
+
+  async _handleRemove(chatId, msg) {
+    const targetMsgId = msg.reply_to_message.message_id;
+    try {
+      const all = await (await db()).getAll('photos');
+      const photo = all.find(p => p.photoMsgId === targetMsgId);
+      if (!photo) {
+        try { await tg.sendMessage(chatId, 'Item not found in slideshow.'); } catch {}
+        return;
+      }
+
+      for (const msgId of [photo.photoMsgId, photo.botMsgId, photo.confirmMsgId].filter(Boolean)) {
+        try { await tg.deleteMessage(chatId, msgId); } catch {}
+      }
+      try { await tg.deleteMessage(chatId, msg.message_id); } catch {}
+      await (await db()).delete('photos', photo.id);
+      await slideshow.rebuild();
+    } catch (err) {
+      console.error('Remove error:', err);
+    }
+  },
+
+  async _fetchAvatar(photoId, senderId) {
+    try {
+      const profile = await tg.getUserProfilePhotos(senderId, { limit: 1 });
+      if (!profile?.photos?.length) { console.log('No profile photos for', senderId); return; }
+      const photoData = profile.photos[0];
+      const thumb = photoData[photoData.length - 1];
+      const info = await tg.getFile(thumb.file_id);
+      if (!info?.file_path) { console.log('No file_path for avatar'); return; }
+      const record = await (await db()).get('photos', photoId);
+      if (!record) return;
+      record.senderAvatarPath = info.file_path;
+      await (await db()).put('photos', record);
+    } catch (err) {
+      console.error('Avatar fetch error:', err);
+    }
+  },
+
+  async _handleMedia(chatId, msg, mediaObj, mediaType) {
+    try {
+      const fileInfo = await tg.getFile(mediaObj.file_id);
+      let blob = null;
+      try { blob = await tg.downloadFile(fileInfo.file_path); } catch {}
+
+      const existing = await (await db()).getAll('photos');
+      if (existing.some(p => p.fileUniqueId === mediaObj.file_unique_id)) return;
+
+      const senderId = msg.from?.id;
+      const senderName = msg.from?.first_name || msg.from?.username || 'Unknown';
+
+      const now = Date.now();
+      const id = await (await db()).add('photos', {
+        fileId: mediaObj.file_id,
+        fileUniqueId: mediaObj.file_unique_id,
+        filePath: fileInfo.file_path,
+        mediaType,
+        blob,
+        caption: msg.caption || '',
+        duration: 86400,
+        timestamp: now,
+        expiresAt: now + 86400000,
+        chatId,
+        senderId,
+        senderName,
+        senderAvatarPath: null,
+        photoMsgId: msg.message_id,
+        botMsgId: null,
+        confirmMsgId: null
+      });
+
+      await this._fetchAvatar(id, senderId);
+
+      await slideshow.rebuild();
+
+      const label = mediaType === 'photo' ? 'photo' : mediaType === 'video' ? 'video' : 'GIF';
+      const sent = await tg.sendMessage(chatId, `How long should this ${label} appear?`, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '1 hour', callback_data: 'dur:3600' }, { text: '1 day', callback_data: 'dur:86400' }],
+            [{ text: '1 week', callback_data: 'dur:604800' }, { text: 'Forever', callback_data: 'dur:0' }]
+          ]
+        }
+      });
+
+      if (sent && sent.message_id) {
+        const record = await (await db()).get('photos', id);
+        record.botMsgId = sent.message_id;
+        await (await db()).put('photos', record);
+      }
+    } catch (err) {
+      console.error('Media handling error:', err);
+    }
+  },
+
+  async _handlePhoto(chatId, msg) {
+    const photo = msg.photo[msg.photo.length - 1];
+    await this._handleMedia(chatId, msg, photo, 'photo');
+  },
+
+  async _handleVideo(chatId, msg) {
+    await this._handleMedia(chatId, msg, msg.video, 'video');
+  },
+
+  async _handleAnimation(chatId, msg) {
+    await this._handleMedia(chatId, msg, msg.animation, 'gif');
+  },
+
+  async _handleCallback(cq) {
+    const botMsgId = cq.message?.message_id;
+    if (!botMsgId) return;
+
+    const all = await (await db()).getAll('photos');
+    const photo = all.find(p => p.botMsgId === botMsgId);
+    if (!photo) return;
+
+    const data = cq.data;
+    if (!data.startsWith('dur:')) return;
+
+    const duration = parseInt(data.split(':')[1], 10) || 86400;
+    photo.duration = duration;
+    photo.expiresAt = duration > 0 ? Date.now() + duration * 1000 : Infinity;
+
+    await (await db()).put('photos', photo);
+    await tg.answerCallbackQuery(cq.id, 'Duration set!');
+
+    // Remove the question message now that it's been answered
+    try { await tg.deleteMessage(photo.chatId, botMsgId); } catch {}
+    photo.botMsgId = undefined;
+    await (await db()).put('photos', photo);
+
+    const label = duration === 0 ? 'Forever' :
+      duration < 86400 ? '1 hour' :
+      duration < 604800 ? '1 day' : '1 week';
+
+    const mediaLabel = photo.mediaType === 'photo' ? 'Photo' : photo.mediaType === 'video' ? 'Video' : 'GIF';
+    const confirmMsg = await tg.sendMessage(photo.chatId, `${mediaLabel} will display for ${label}.`, { reply_to_message_id: photo.photoMsgId });
+    if (confirmMsg && confirmMsg.message_id) {
+      photo.confirmMsgId = confirmMsg.message_id;
+      await (await db()).put('photos', photo);
+    }
+
+    await slideshow.rebuild();
+  },
+
+  async cleanupExpired() {
+    try {
+      const all = await (await db()).getAll('photos');
+      const expired = all.filter(p => p.expiresAt !== Infinity && p.expiresAt <= Date.now());
+      if (expired.length === 0) return;
+
+      for (const p of expired) {
+        for (const msgId of [p.photoMsgId, p.botMsgId, p.confirmMsgId].filter(Boolean)) {
+          try { await tg.deleteMessage(p.chatId, msgId); } catch {}
+        }
+        await (await db()).delete('photos', p.id);
+      }
+
+      await slideshow.rebuild();
+    } catch (err) {
+      console.error('Cleanup error:', err);
+    }
+  },
+
+  async cleanupChannel() {
+    console.log('Channel cleanup: running...');
+    try {
+      const all = await (await db()).getAll('photos');
+      const photoMsgIds = new Set();
+      for (const p of all) {
+        if (p.photoMsgId) photoMsgIds.add(p.photoMsgId);
+        if (p.botMsgId) photoMsgIds.add(p.botMsgId);
+        if (p.confirmMsgId) photoMsgIds.add(p.confirmMsgId);
+      }
+
+      const tracked = await (await db()).getAll('tracked');
+      let deleted = 0;
+      for (const t of tracked) {
+        if (!photoMsgIds.has(t.messageId)) {
+          try { await tg.deleteMessage(t.chatId, t.messageId); } catch {}
+          await (await db()).delete('tracked', t.messageId);
+          deleted++;
+        }
+      }
+      if (deleted > 0) console.log('Channel cleanup: deleted', deleted, 'messages');
+    } catch (err) {
+      console.error('Channel cleanup error:', err);
+    }
+  }
+};
+
+/* ============================================================
+   Slideshow Controller
+   ============================================================ */
+const slideshow = {
+  photos: [],
+  currentIndex: 0,
+  timer: null,
+  activeSlide: 0,
+  currentUrl: null,
+  _currentIsBlob: false,
+  _loading: false,
+
+  _nameColor(name) {
+    const colors = ['#e74c3c','#3498db','#2ecc71','#f39c12','#9b59b6','#1abc9c','#e67e22','#34495e'];
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    return colors[Math.abs(hash) % colors.length];
+  },
+
+  async rebuild() {
+    const all = await (await db()).getAll('photos');
+    const now = Date.now();
+    this.photos = all.filter(p => p.expiresAt > now || p.expiresAt === Infinity);
+
+    this._updateCounts();
+
+    if (this.photos.length === 0) {
+      this._showEmpty(true);
+      this.stop();
+      return;
+    }
+
+    this._showEmpty(false);
+    if (this.timer === null) {
+      this.currentIndex = -1;
+      await this.next();
+    }
+  },
+
+  async showPhoto(index) {
+    if (this.photos.length === 0) return;
+    this._loading = true;
+    const photo = this.photos[index % this.photos.length];
+
+    const nextSlideEl = document.getElementById(`slide-${1 - this.activeSlide}`);
+    const activeSlideEl = document.getElementById(`slide-${this.activeSlide}`);
+    const nextBg = nextSlideEl.querySelector('.bg');
+    const nextFg = nextSlideEl.querySelector('.fg');
+    const nextBgVideo = nextSlideEl.querySelector('.bg-video');
+    const nextFgVideo = nextSlideEl.querySelector('.fg-video');
+    const nextCaption = nextSlideEl.querySelector('.caption-overlay p');
+    const nextCount = nextSlideEl.querySelector('.photo-count');
+    const nextSender = nextSlideEl.querySelector('.message-group');
+    const nextAvatarImg = nextSlideEl.querySelector('.sender-avatar img');
+    const nextAvatarCircle = nextSlideEl.querySelector('.sender-avatar');
+    const nextInitial = nextSlideEl.querySelector('.sender-avatar .initial');
+    const nextSenderName = nextSlideEl.querySelector('.sender-name');
+    const mediaType = photo.mediaType || 'photo';
+    const isVideo = mediaType === 'video' || mediaType === 'gif';
+    const isGif = mediaType === 'gif';
+
+    // Pause old video on active slide
+    const activeBgVideo = activeSlideEl.querySelector('.bg-video');
+    const activeFgVideo = activeSlideEl.querySelector('.fg-video');
+    if (activeBgVideo) activeBgVideo.pause();
+    if (activeFgVideo) activeFgVideo.pause();
+
+    nextCaption.textContent = photo.caption || '';
+
+    nextCount.textContent = `${(index % this.photos.length) + 1} / ${this.photos.length}`;
+
+    if (photo.senderName) {
+      nextSenderName.textContent = photo.senderName;
+      const color = this._nameColor(photo.senderName);
+      nextSenderName.style.color = color;
+      nextInitial.textContent = photo.senderName.charAt(0).toUpperCase();
+      nextAvatarCircle.style.background = color;
+
+      if (photo.senderAvatarPath) {
+        nextAvatarImg.src = `https://api.telegram.org/file/bot${tg._token}/${photo.senderAvatarPath}`;
+        nextAvatarImg.style.display = 'block';
+        nextAvatarImg.onload = () => { nextInitial.style.display = 'none'; };
+        nextAvatarImg.onerror = () => {
+          nextAvatarImg.style.display = 'none';
+          nextInitial.style.display = '';
+        };
+      } else {
+        nextAvatarImg.style.display = 'none';
+        nextAvatarImg.src = '';
+        nextInitial.style.display = '';
+      }
+      nextSender.style.display = 'flex';
+    } else {
+      nextSender.style.display = 'none';
+    }
+
+    if (this._currentIsBlob && this.currentUrl) URL.revokeObjectURL(this.currentUrl);
+
+    let url;
+    if (photo.blob) {
+      url = URL.createObjectURL(photo.blob);
+      this._currentIsBlob = true;
+    } else {
+      url = `https://api.telegram.org/file/bot${tg._token}/${photo.filePath}`;
+      this._currentIsBlob = false;
+    }
+    this.currentUrl = url;
+
+    if (isVideo) {
+      nextBg.style.display = 'none';
+      nextFg.style.display = 'none';
+      nextBgVideo.style.display = '';
+      nextFgVideo.style.display = '';
+      nextBgVideo.src = url;
+      nextFgVideo.src = url;
+      nextBgVideo.loop = true;
+      nextFgVideo.loop = true;
+      await Promise.all([
+        new Promise(resolve => { nextBgVideo.onloadedmetadata = () => resolve(); nextBgVideo.onerror = () => resolve(); }),
+        new Promise(resolve => { nextFgVideo.onloadedmetadata = () => resolve(); nextFgVideo.onerror = () => resolve(); })
+      ]);
+      nextBgVideo.play().catch(() => {});
+      nextFgVideo.play().catch(() => {});
+    } else {
+      nextBg.style.display = '';
+      nextFg.style.display = '';
+      nextBgVideo.style.display = 'none';
+      nextFgVideo.style.display = 'none';
+      nextBgVideo.src = '';
+      nextFgVideo.src = '';
+      await Promise.all([
+        new Promise(resolve => { nextBg.onload = () => resolve(); nextBg.onerror = () => resolve(); nextBg.src = url; }),
+        new Promise(resolve => { nextFg.onload = () => resolve(); nextFg.onerror = () => resolve(); nextFg.src = url; })
+      ]);
+    }
+
+    nextSlideEl.classList.add('active');
+    activeSlideEl.classList.remove('active');
+    this.activeSlide = 1 - this.activeSlide;
+    this.currentIndex = index;
+    this._loading = false;
+  },
+
+  async next() {
+    if (this._loading) return;
+    if (this.photos.length === 0) { this.stop(); return; }
+    this.stop();
+    this.currentIndex = (this.currentIndex + 1) % this.photos.length;
+    await this.showPhoto(this.currentIndex);
+    this._scheduleNext();
+  },
+
+  _scheduleNext() {
+    this.stop();
+    if (this.photos.length === 0) return;
+    const photo = this.photos[this.currentIndex % this.photos.length];
+    const dur = Math.max(settings.get('displayDuration'), 3) * 1000;
+    this.timer = setTimeout(() => this.next(), dur + 1500); // + transition time
+  },
+
+  stop() {
+    if (this.timer) { clearTimeout(this.timer); this.timer = null; }
+  },
+
+  _showEmpty(show) {
+    document.getElementById('empty-state').classList.toggle('hidden', !show);
+  },
+
+  _updateCounts() {
+    document.getElementById('photo-count-label').textContent = `${this.photos.length} items`;
+    document.getElementById('photo-count-admin').textContent = this.photos.length;
+  }
+};
+
+/* ============================================================
+   Overlay Controllers
+   ============================================================ */
+const overlay = {
+  clockEl: document.getElementById('clock'),
+  dateEl: document.getElementById('date'),
+  weatherEl: document.getElementById('weather'),
+  _weatherTimer: null,
+  _weatherData: null,
+
+  startClock() {
+    const locale = navigator.language;
+    const update = () => {
+      const now = new Date();
+      this.clockEl.textContent = now.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+      this.dateEl.textContent = now.toLocaleDateString(locale, { weekday: 'long', month: 'long', day: 'numeric' });
+    };
+    update();
+    setInterval(update, 1000);
+  },
+
+  async fetchWeather() {
+    const lat = settings.get('lat');
+    const lon = settings.get('lon');
+    if (!lat || !lon) return;
+
+    try {
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&timezone=auto`;
+      const res = await fetch(url);
+      const data = await res.json();
+      this._weatherData = data.current;
+      this._updateWeatherDisplay();
+      document.getElementById('dot-weather').className = 'status-dot green';
+    } catch {
+      document.getElementById('dot-weather').className = 'status-dot red';
+    }
+  },
+
+  _updateWeatherDisplay() {
+    if (!this._weatherData) return;
+    const temp = Math.round(this._weatherData.temperature_2m);
+    const code = this._weatherData.weather_code;
+    const label = this._weatherLabel(code);
+    this.weatherEl.textContent = `${label}  ${temp}\u00B0`;
+  },
+
+  _weatherLabel(code) {
+    const lang = navigator.language.startsWith('de') ? 'de' :
+                 navigator.language.startsWith('es') ? 'es' :
+                 navigator.language.startsWith('fr') ? 'fr' :
+                 navigator.language.startsWith('it') ? 'it' :
+                 navigator.language.startsWith('pt') ? 'pt' :
+                 navigator.language.startsWith('ru') ? 'ru' :
+                 navigator.language.startsWith('ja') ? 'ja' :
+                 navigator.language.startsWith('zh') ? 'zh' :
+                 navigator.language.startsWith('he') ? 'he' :
+                 'en';
+    const labels = {
+      en: ['Sunny', 'Partly cloudy', 'Overcast', 'Foggy', 'Drizzle', 'Rain', 'Snow', 'Showers', 'Thunderstorm', 'Cloudy'],
+      de: ['Sonnig', 'Teils bew\u00f6lkt', 'Bedeckt', 'Neblig', 'Nieseln', 'Regen', 'Schnee', 'Schauer', 'Gewitter', 'Bew\u00f6lkt'],
+      es: ['Soleado', 'Parcialmente nublado', 'Nublado', 'Niebla', 'Llovizna', 'Lluvia', 'Nieve', 'Chubascos', 'Tormenta', 'Nublado'],
+      fr: ['Ensoleill\u00e9', 'Partiellement nuageux', 'Couvert', 'Brumeux', 'Bruine', 'Pluie', 'Neige', 'Averses', 'Orage', 'Nuageux'],
+      it: ['Sereno', 'Parzialmente nuvoloso', 'Coperto', 'Nebbioso', 'Pioviggine', 'Pioggia', 'Neve', 'Rovesci', 'Temporale', 'Nuvoloso'],
+      pt: ['Ensolarado', 'Parcialmente nublado', 'Nublado', 'Nevoeiro', 'Garoa', 'Chuva', 'Neve', 'Aguaceiros', 'Tempestade', 'Nublado'],
+      ru: ['\u0421\u043e\u043b\u043d\u0435\u0447\u043d\u043e', '\u041e\u0431\u043b\u0430\u0447\u043d\u043e', '\u041f\u0430\u0441\u043c\u0443\u0440\u043d\u043e', '\u0422\u0443\u043c\u0430\u043d\u043d\u043e', '\u041c\u043e\u0440\u043e\u0441\u044c', '\u0414\u043e\u0436\u0434\u044c', '\u0421\u043d\u0435\u0433', '\u041b\u0438\u0432\u0435\u043d\u044c', '\u0413\u0440\u043e\u0437\u0430', '\u041e\u0431\u043b\u0430\u0447\u043d\u043e'],
+      ja: ['\u6674\u308c', '\u66c7\u308a', '\u304f\u3082\u308a', '\u9727', '\u849c\u96e8', '\u96e8', '\u96ea', '\u306b\u308f\u304b', '\u96f7\u96e8', '\u66c7\u308a'],
+      zh: ['\u6674', '\u591a\u4e91', '\u9634', '\u96fe', '\u6bdb\u6bdb\u96e8', '\u96e8', '\u96ea', '\u9635\u96e8', '\u96f7\u66b4\u96e8', '\u591a\u4e91'],
+      he: ['\u05e9\u05de\u05e9\u05d9', '\u05de\u05e2\u05e0\u05df \u05d7\u05dc\u05e7\u05d9', '\u05de\u05e2\u05d5\u05e0\u05df', '\u05e2\u05d9\u05d1\u05e4\u05d9', '\u05d8\u05d9\u05e4\u05d8\u05d5\u05e3', '\u05d2\u05e9\u05dd', '\u05e9\u05dc\u05d2', '\u05de\u05de\u05d8\u05e8\u05d9\u05dd', '\u05e1\u05d5\u05e4\u05d4', '\u05de\u05e2\u05d5\u05e0\u05df']
+    };
+    const l = labels[lang] || labels.en;
+    if (code === 0) return l[0];
+    if (code <= 2) return l[1];
+    if (code === 3) return l[2];
+    if (code <= 48) return l[3];
+    if (code <= 55) return l[4];
+    if (code <= 65) return l[5];
+    if (code <= 77) return l[6];
+    if (code <= 82) return l[7];
+    if (code <= 99) return l[8];
+    return l[9];
+  },
+
+  startWeather() {
+    this.fetchWeather();
+    this._weatherTimer = setInterval(() => this.fetchWeather(), 600000); // 10 min
+  }
+};
+
+/* ============================================================
+   Sleep Mode
+   ============================================================ */
+const sleepMode = {
+  _timer: null,
+  _el: document.getElementById('sleep-overlay'),
+  _clockEl: document.querySelector('#sleep-overlay .sleep-clock'),
+  _dateEl: document.querySelector('#sleep-overlay .sleep-date'),
+
+  start() {
+    this.check();
+    this._timer = setInterval(() => this.check(), 30000);
+    this._el.addEventListener('click', () => this.dismiss());
+  },
+
+  check() {
+    const active = settings.sleepActive;
+    this._el.classList.toggle('active', active);
+    if (active) this._updateClock();
+  },
+
+  dismiss() {
+    this._el.classList.remove('active');
+  },
+
+  _updateClock() {
+    const now = new Date();
+    const locale = navigator.language;
+    this._clockEl.textContent = now.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+    this._dateEl.textContent = now.toLocaleDateString(locale, { weekday: 'long', month: 'long', day: 'numeric' });
+  }
+};
+
+/* ============================================================
+   Burn-in Protection
+   ============================================================ */
+const burnIn = {
+  _timer: null,
+  _offsetX: 0,
+  _offsetY: 0,
+  _overlayTop: document.getElementById('overlay-top'),
+
+  async load() {
+    const d = await (await db()).get('config', 'burnOffset');
+    if (d) {
+      this._offsetX = d.value.x || 0;
+      this._offsetY = d.value.y || 0;
+    }
+    this._apply();
+  },
+
+  async shift() {
+    const maxDelta = 6;
+    const maxTotal = 40;
+    let dx = Math.floor(Math.random() * (maxDelta * 2 + 1)) - maxDelta;
+    let dy = Math.floor(Math.random() * (maxDelta * 2 + 1)) - maxDelta;
+
+    if (Math.abs(this._offsetX + dx) > maxTotal) dx = -Math.sign(this._offsetX) * maxTotal - this._offsetX;
+    if (Math.abs(this._offsetY + dy) > maxTotal) dy = -Math.sign(this._offsetY) * maxTotal - this._offsetY;
+
+    this._offsetX += dx;
+    this._offsetY += dy;
+    this._apply();
+    await (await db()).put('config', { key: 'burnOffset', value: { x: this._offsetX, y: this._offsetY } });
+  },
+
+  _apply() {
+    this._overlayTop.style.transform = `translate(${this._offsetX}px, ${this._offsetY}px)`;
+  },
+
+  start() {
+    this.shift(); // initial shift
+    this._timer = setInterval(() => this.shift(), 3600000); // every hour
+  }
+};
+
+/* ============================================================
+   Wake Lock
+   ============================================================ */
+const wakeLock = {
+  _sentinel: null,
+
+  async acquire() {
+    if (!navigator.wakeLock) return;
+    try {
+      if (this._sentinel) await this._sentinel.release();
+      this._sentinel = await navigator.wakeLock.request('screen');
+    } catch { /* not critical */ }
+  },
+
+  async release() {
+    if (this._sentinel) {
+      try { await this._sentinel.release(); } catch {}
+      this._sentinel = null;
+    }
+  }
+};
+
+/* ============================================================
+   Message Viewer
+   ============================================================ */
+const messageViewer = {
+  messages: [],
+  currentIndex: -1,
+  timer: null,
+  el: document.getElementById('message-overlay'),
+
+  async refresh() {
+    this.messages = await (await db()).getAll('messages');
+    this.messages.sort((a, b) => a.date - b.date);
+    if (this.messages.length > 0 && this.currentIndex < 0) {
+      this.currentIndex = 0;
+      this._show();
+    }
+  },
+
+  _show() {
+    if (this.messages.length === 0) return;
+    if (this.currentIndex >= this.messages.length) this.currentIndex = 0;
+    const msg = this.messages[this.currentIndex];
+
+    this.el.querySelector('.msg-sender').textContent = msg.senderName;
+    this.el.querySelector('.msg-text').textContent = msg.text;
+    this.el.querySelector('.msg-time').textContent = this._timeAgo(msg.date);
+    this.el.classList.add('visible');
+
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => this._hide(), 15000);
+  },
+
+  _hide() {
+    this.el.classList.remove('visible');
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => {
+      this.currentIndex = (this.currentIndex + 1) % this.messages.length;
+      this._show();
+    }, 1500);
+  },
+
+  _timeAgo(ts) {
+    const diff = Date.now() - ts;
+    if (diff < 60000) return 'just now';
+    if (diff < 3600000) return Math.floor(diff / 60000) + 'm ago';
+    if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago';
+    return new Date(ts).toLocaleDateString();
+  }
+};
+
+/* ============================================================
+   Telegram Polling
+   ============================================================ */
+const poller = {
+  _running: false,
+  _offset: 0,
+
+  async start() {
+    this._offset = settings.get('pollOffset') || 0;
+    this._running = true;
+    this._loop();
+  },
+
+  stop() { this._running = false; },
+
+  async _loop() {
+    while (this._running) {
+      try {
+        const updates = await tg.getUpdates(this._offset);
+        if (updates && updates.length > 0) {
+          for (const update of updates) {
+            await conv.handleUpdate(update);
+            this._offset = Math.max(this._offset, update.update_id + 1);
+          }
+          await settings.save({ pollOffset: this._offset });
+        }
+        document.getElementById('dot-telegram').className = 'status-dot green';
+      } catch (err) {
+        console.error('Poll error:', err);
+        document.getElementById('dot-telegram').className = 'status-dot red';
+        await new Promise(r => setTimeout(r, 5000));
+      }
+    }
+  }
+};
+
+/* ============================================================
+   Admin Panel
+   ============================================================ */
+const admin = {
+  _overlay: document.getElementById('admin-overlay'),
+  _visible: false,
+  _dblTapTimer: null,
+
+  init() {
+    document.getElementById('admin-close').addEventListener('click', () => this.hide());
+    this._overlay.addEventListener('click', (e) => {
+      if (e.target === this._overlay) this.hide();
+    });
+    document.getElementById('admin-save').addEventListener('click', () => this.save());
+
+    // Double-tap to toggle
+    document.addEventListener('dblclick', () => this.toggle());
+    // Touch: two taps within 500ms
+    document.addEventListener('touchstart', (e) => {
+      if (this._dblTapTimer) {
+        clearTimeout(this._dblTapTimer);
+        this._dblTapTimer = null;
+        this.toggle();
+        e.preventDefault();
+      } else {
+        this._dblTapTimer = setTimeout(() => { this._dblTapTimer = null; }, 400);
+      }
+    });
+
+    // Listen for keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && this._visible) this.hide();
+    });
+  },
+
+  toggle() {
+    this._visible ? this.hide() : this.show();
+  },
+
+  async show() {
+    this._visible = true;
+    this._populate();
+    this._overlay.classList.add('active');
+    slideshow.stop();
+    try { await wakeLock.release(); } catch {}
+  },
+
+  hide() {
+    this._visible = false;
+    this._overlay.classList.remove('active');
+    if (slideshow.photos.length > 0) {
+      slideshow._scheduleNext();
+      wakeLock.acquire();
+    }
+  },
+
+  _populate() {
+    const s = settings.getAll();
+    document.getElementById('a-bot-token').value = s.botToken || '';
+    document.getElementById('a-whitelist').value = s.chatId ? String(s.chatId) : '';
+    document.getElementById('a-location').value = `${s.lat || ''}, ${s.lon || ''}`;
+    document.getElementById('a-sleep-start').value = s.sleepStart || '23:00';
+    document.getElementById('a-sleep-end').value = s.sleepEnd || '07:00';
+    document.getElementById('a-display-duration').value = s.displayDuration || 10;
+    this._renderPhotoList();
+  },
+
+  async save() {
+    const chatIdStr = document.getElementById('a-whitelist').value.trim();
+    const chatId = chatIdStr ? Number(chatIdStr) : 0;
+    const locStr = document.getElementById('a-location').value.trim();
+    let lat = settings.get('lat'), lon = settings.get('lon');
+    if (locStr) {
+      const parts = locStr.split(',').map(s => parseFloat(s.trim()));
+      if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        lat = parts[0]; lon = parts[1];
+      }
+    }
+
+    const newToken = document.getElementById('a-bot-token').value.trim();
+
+    await settings.save({
+      botToken: newToken,
+      chatId,
+      lat,
+      lon,
+      sleepStart: document.getElementById('a-sleep-start').value || '23:00',
+      sleepEnd: document.getElementById('a-sleep-end').value || '07:00',
+      displayDuration: parseInt(document.getElementById('a-display-duration').value, 10) || 10
+    });
+
+    // Re-init Telegram if token changed
+    if (newToken) tg.init(newToken);
+
+    overlay.fetchWeather();
+    slideshow.rebuild();
+    this.showToast('Settings saved');
+    this.hide();
+  },
+
+  async _renderPhotoList() {
+    const el = document.getElementById('photo-list');
+    const photos = await (await db()).getAll('photos');
+    if (photos.length === 0) {
+      el.innerHTML = '<div style="opacity:0.4;font-size:0.85rem;padding:8px 0;">No media stored</div>';
+      return;
+    }
+    el.innerHTML = photos.map(p => {
+      const url = p.blob
+        ? URL.createObjectURL(p.blob)
+        : `https://api.telegram.org/file/bot${tg._token}/${p.filePath}`;
+      const isBlob = !!p.blob;
+      const mediaType = p.mediaType || 'photo';
+      const mediaIcon = mediaType === 'video' ? '🎬' : mediaType === 'gif' ? '🎞️' : '📷';
+      const durLabel = p.duration === 0 ? 'Forever' :
+        p.duration < 86400 ? '1h' :
+        p.duration < 604800 ? '1d' : '1w';
+      const date = new Date(p.timestamp).toLocaleDateString();
+      const thumb = mediaType === 'photo'
+        ? `<img src="${url}" alt="">`
+        : `<video src="${url}" muted playsinline preload="metadata"></video>`;
+      return `<div class="photo-item">
+        ${thumb}
+        <div class="info">
+          <div class="name">${mediaIcon} ${p.caption || 'No caption'}</div>
+          <div class="meta">${date} &middot; ${durLabel}</div>
+        </div>
+        <button class="del-btn" data-id="${p.id}" title="Delete">&times;</button>
+      </div>`;
+    }).join('');
+
+    el.querySelectorAll('img').forEach(el => {
+      const release = () => { if (el.src.startsWith('blob:')) URL.revokeObjectURL(el.src); };
+      el.addEventListener('load', release);
+      el.addEventListener('error', release);
+    });
+    el.querySelectorAll('video').forEach(el => {
+      const release = () => { if (el.src.startsWith('blob:')) URL.revokeObjectURL(el.src); };
+      el.addEventListener('loadeddata', release);
+      el.addEventListener('error', release);
+    });
+
+    // Delete handlers
+    el.querySelectorAll('.del-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = Number(btn.dataset.id);
+        await (await db()).delete('photos', id);
+        this._renderPhotoList();
+        slideshow.rebuild();
+        this.showToast('Item deleted');
+      });
+    });
+  },
+
+  showToast(msg) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('visible');
+    setTimeout(() => el.classList.remove('visible'), 3000);
+  }
+};
+
+/* ============================================================
+   Setup Screen
+   ============================================================ */
+const setup = {
+  _el: document.getElementById('setup-screen'),
+  _form: document.getElementById('setup-form'),
+
+  show() { this._el.classList.remove('hidden'); },
+  hide() { this._el.classList.add('hidden'); },
+
+  init() {
+    this._form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const token = document.getElementById('s-bot-token').value.trim();
+      const chatIdStr = document.getElementById('s-whitelist').value.trim();
+      const chatId = chatIdStr ? Number(chatIdStr) : 0;
+      const locStr = document.getElementById('s-location').value.trim();
+      let lat = 51.5, lon = -0.12;
+      if (locStr) {
+        const parts = locStr.split(',').map(s => parseFloat(s.trim()));
+        if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) { lat = parts[0]; lon = parts[1]; }
+      }
+
+      await settings.save({
+        botToken: token,
+        chatId,
+        lat,
+        lon,
+        sleepStart: document.getElementById('s-sleep-start').value || '23:00',
+        sleepEnd: document.getElementById('s-sleep-end').value || '07:00'
+      });
+
+      this.hide();
+      app.start();
+    });
+  }
+};
+
+/* ============================================================
+   App
+   ============================================================ */
+const app = {
+  async init() {
+    await settings.load();
+
+    // Merge hardcoded CONFIG into settings (overrides DB values)
+    if (CONFIG.botToken || CONFIG.chatId) {
+      const merge = {};
+      if (CONFIG.botToken) merge.botToken = CONFIG.botToken;
+      if (CONFIG.chatId) merge.chatId = Number(CONFIG.chatId);
+      await settings.save(merge);
+    }
+
+    // Service Worker
+    let swRegistration = null;
+    if ('serviceWorker' in navigator) {
+      swRegistration = await navigator.serviceWorker.register('sw.js').catch(() => {});
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        window.location.reload();
+      });
+    }
+
+    scheduleDailyUpdate(swRegistration);
+
+    admin.init();
+    setup.init();
+
+    // If configured, start; else show setup
+    if (settings.get('botToken') && settings.get('chatId')) {
+      setup.hide();
+      await this.start();
+    } else {
+      // Pre-fill setup from saved settings
+      const s = settings.getAll();
+      if (s.botToken) document.getElementById('s-bot-token').value = s.botToken;
+      if (s.chatId) document.getElementById('s-whitelist').value = String(s.chatId);
+      if (s.lat && s.lon) document.getElementById('s-location').value = `${s.lat}, ${s.lon}`;
+      setup.show();
+    }
+
+    // Handle visibility change - reacquire wake lock
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && slideshow.photos.length > 0) {
+        wakeLock.acquire();
+      }
+    });
+
+    // Keyboard shortcut: c = cleanup non-photo messages
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'c' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (admin._visible) return;
+        conv.cleanupChannel();
+      }
+    });
+  },
+
+  async start() {
+    const s = settings.getAll();
+    tg.init(s.botToken);
+
+    try { await tg.setMyCommands(); } catch {}
+
+    // Rescue any photos stuck in old pending store from prior conversation flow
+    await this._rescuePending();
+
+    await this._importHistory();
+
+    await conv.cleanupExpired();
+
+    overlay.startClock();
+    overlay.startWeather();
+    sleepMode.start();
+    burnIn.load();
+    burnIn.start();
+    await slideshow.rebuild();
+
+    // Periodic cleanup of expired photos
+    setInterval(() => conv.cleanupExpired(), 60000);
+    // Periodic channel cleanup every 15 minutes
+    setInterval(() => conv.cleanupChannel(), 900000);
+    // Force-start if rebuild didn't (e.g. photos already existed)
+    if (slideshow.photos.length > 0 && slideshow.timer === null) {
+      slideshow.currentIndex = -1;
+      await slideshow.next();
+    }
+    await messageViewer.refresh();
+    poller.start();
+    wakeLock.acquire();
+  },
+
+  async _rescuePending() {
+    try {
+      const pendingItems = await (await db()).getAll('pending');
+      if (!pendingItems || pendingItems.length === 0) return;
+      let rescued = 0;
+      for (const p of pendingItems) {
+        if (!p.fileUniqueId) continue;
+        const existing = await (await db()).getAll('photos');
+        if (existing.some(ph => ph.fileUniqueId === p.fileUniqueId)) continue;
+        await (await db()).add('photos', {
+          fileId: p.fileId,
+          fileUniqueId: p.fileUniqueId,
+          filePath: p.filePath,
+          blob: p.blob || null,
+          caption: p.caption || '',
+          duration: 86400,
+          timestamp: Date.now(),
+          expiresAt: Infinity,
+          chatId: p.chatId
+        });
+        rescued++;
+      }
+      if (rescued > 0) {
+        await (await db()).clear('pending');
+        admin.showToast(`Rescued ${rescued} pending photo(s)`);
+      }
+    } catch (err) {
+      console.error('Pending rescue error:', err);
+    }
+  },
+
+  async _importHistory() {
+    try {
+      const pollOffset = settings.get('pollOffset') || 1;
+      const updates = await tg.getUpdates(pollOffset, { timeout: 2 });
+      if (!updates || updates.length === 0) return;
+
+      const existing = await (await db()).getAll('photos');
+      const existingPhotos = new Set(existing.map(p => p.fileUniqueId).filter(Boolean));
+      const existingMsgs = new Set();
+      const allMsgs = await (await db()).getAll('messages');
+      for (const m of allMsgs) {
+        existingMsgs.add(m.chatId + '_' + m.messageId);
+      }
+
+      const allowedChat = settings.get('chatId');
+      let maxId = 0;
+      let importedPhotos = 0;
+      let importedMsgs = 0;
+      let skippedExisting = 0;
+
+      for (const update of updates) {
+        if (update.update_id > maxId) maxId = update.update_id;
+        if (!update.message) continue;
+        const chatId = update.message.chat?.id || update.message.from?.id;
+        if (!chatId || chatId !== Number(allowedChat)) continue;
+
+        try { await (await db()).put('tracked', { messageId: update.message.message_id, chatId }); } catch {}
+
+        const mediaInfo = update.message.video || update.message.animation || (update.message.photo ? update.message.photo[update.message.photo.length - 1] : null);
+        if (mediaInfo) {
+          const mediaType = update.message.photo ? 'photo' : update.message.video ? 'video' : 'gif';
+          if (existingPhotos.has(mediaInfo.file_unique_id)) {
+            skippedExisting++;
+            continue;
+          }
+          existingPhotos.add(mediaInfo.file_unique_id);
+          try {
+            const fileInfo = await tg.getFile(mediaInfo.file_id);
+            let blob = null;
+            try { blob = await tg.downloadFile(fileInfo.file_path); } catch {}
+            await (await db()).add('photos', {
+              fileId: mediaInfo.file_id,
+              fileUniqueId: mediaInfo.file_unique_id,
+              filePath: fileInfo.file_path,
+              mediaType,
+              blob,
+              caption: update.message.caption || '',
+              duration: 86400,
+              timestamp: (update.message.date || Date.now() / 1000) * 1000,
+              expiresAt: Infinity,
+              chatId,
+              senderId: update.message.from?.id,
+              senderName: update.message.from?.first_name || update.message.from?.username || 'Unknown',
+              photoMsgId: update.message.message_id
+            });
+            importedPhotos++;
+          } catch {}
+          continue;
+        }
+
+        if (update.message.text) {
+          const msgKey = chatId + '_' + update.message.message_id;
+          if (existingMsgs.has(msgKey)) continue;
+          existingMsgs.add(msgKey);
+          const sender = update.message.from?.first_name || update.message.from?.username || 'Unknown';
+          try {
+            await (await db()).add('messages', {
+              messageId: update.message.message_id,
+              chatId,
+              text: update.message.text,
+              senderName: sender,
+              date: (update.message.date || Date.now() / 1000) * 1000
+            });
+            importedMsgs++;
+          } catch {}
+        }
+      }
+
+      if (importedPhotos > 0 || importedMsgs > 0) {
+        admin.showToast(`History: ${importedPhotos} photos, ${importedMsgs} messages (${skippedExisting} skipped)`);
+      }
+
+      if (importedPhotos > 0) await slideshow.rebuild();
+      if (importedMsgs > 0) await messageViewer.refresh();
+
+      if (maxId > 0) {
+        await settings.save({ pollOffset: maxId + 1 });
+      }
+    } catch (err) {
+      console.error('History import error:', err);
+    }
+  }
+};
+
+function scheduleDailyUpdate(registration) {
+  if (!registration) return;
+  const now = new Date();
+  const target = new Date(now);
+  target.setHours(3, 0, 0, 0);
+  if (target <= now) target.setDate(target.getDate() + 1);
+  setTimeout(async () => {
+    try {
+      await registration.update();
+      if (registration.waiting) {
+        registration.waiting.postMessage('skip-waiting');
+      } else {
+        window.location.reload();
+      }
+    } catch {}
+    scheduleDailyUpdate(registration);
+  }, target - now);
+}
+
+app.init();
+</script>
+</body>
+</html>
