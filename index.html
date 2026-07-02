@@ -858,7 +858,8 @@ const conv = {
     const data = cq.data;
     if (!data.startsWith('dur:')) return;
 
-    const duration = parseInt(data.split(':')[1], 10) || 86400;
+    const raw = parseInt(data.split(':')[1], 10);
+    const duration = Number.isNaN(raw) ? 86400 : raw;
     photo.duration = duration;
     photo.expiresAt = duration > 0 ? Date.now() + duration * 1000 : Infinity;
 
