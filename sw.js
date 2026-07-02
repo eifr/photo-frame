@@ -1,4 +1,4 @@
-const CACHE = 'photo-frame-v1';
+const CACHE = 'photo-frame-v2';
 const STATIC = [
   '/',
   '/index.html',
